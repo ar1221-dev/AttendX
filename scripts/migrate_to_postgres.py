@@ -19,9 +19,9 @@ def migrate():
         print("Error: TARGET_DATABASE_URL is required.")
         return
 
-    # Render URL compatibility
-    if target_url.startswith("postgres://"):
-        target_url = target_url.replace("postgres://", "postgresql://", 1)
+    # Clean and parse the target PostgreSQL URL
+    from db_engine import clean_database_url
+    target_url = clean_database_url(target_url)
 
     print("\nConnecting to local SQLite database...")
     local_db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'attendance.db')

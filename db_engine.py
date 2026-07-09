@@ -1,15 +1,67 @@
 import os
 import re
 import sqlite3
+import urllib.parse
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
+
+def clean_database_url(url):
+    if not url:
+        return url
+    
+    # Check if it is a postgres URL
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+        
+    if not url.startswith("postgresql://"):
+        return url
+        
+    try:
+        # Split scheme
+        scheme, rest = url.split("://", 1)
+        # Split authority and path/options
+        if "/" in rest:
+            authority, path = rest.split("/", 1)
+        else:
+            authority, path = rest, ""
+            
+        # Split credentials and host
+        if "@" in authority:
+            credentials, host = authority.rsplit("@", 1)
+        else:
+            credentials, host = "", authority
+            
+        if credentials:
+            if ":" in credentials:
+                username, password = credentials.split(":", 1)
+            else:
+                username, password = credentials, ""
+                
+            # Clean password: strip square brackets if they enclose the password
+            if password.startswith("[") and password.endswith("]"):
+                password = password[1:-1]
+                print("Warning: Detected and stripped square brackets '[ ]' around password in DATABASE_URL.")
+                
+            # URL encode username and password safely
+            username = urllib.parse.quote(urllib.parse.unquote(username))
+            password = urllib.parse.quote(urllib.parse.unquote(password))
+            
+            # Reconstruct credentials
+            credentials = f"{username}:{password}" if password else username
+            authority = f"{credentials}@{host}"
+            
+        # Reconstruct URL
+        return f"{scheme}://{authority}/{path}"
+    except Exception as e:
+        # Fallback to original URL if anything goes wrong during parsing
+        print(f"Warning: Failed to parse/clean DATABASE_URL: {e}")
+        return url
 
 # Determine database URL from environment
 DB_PATH = None
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if DATABASE_URL:
-    if DATABASE_URL.startswith("postgres://"):
-        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    DATABASE_URL = clean_database_url(DATABASE_URL)
     # Enable connection pooling with robust limits
     engine = create_engine(
         DATABASE_URL,
