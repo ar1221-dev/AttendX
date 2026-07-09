@@ -291,6 +291,7 @@ def sync_attendance_from_timetable(semester_id, up_to_date=None):
         return {'created': 0, 'skipped_days': 0}
 
     conn = get_db()
+    
     holidays = {h['date'] for h in conn.execute(
         "SELECT date FROM holidays WHERE semester_id = ?;", (semester_id,)
     ).fetchall()}
@@ -317,7 +318,27 @@ def sync_attendance_from_timetable(semester_id, up_to_date=None):
         ).fetchall()
 
     if not versions:
+        conn.close()
         return {'created': 0, 'skipped_days': 0}
+
+    # Fetch all existing attendance records for the semester to process in-memory
+    existing_attendance = conn.execute(
+        "SELECT id, subject_id, date, time, version_id, notes, status FROM attendance WHERE semester_id = ?;",
+        (semester_id,)
+    ).fetchall()
+    
+    attendance_by_date = {}
+    for att in existing_attendance:
+        attendance_by_date.setdefault(att['date'], []).append(att)
+
+    # In-memory version resolver to eliminate O(N) database queries
+    def resolve_version_in_memory(target_date_str):
+        for v in versions:
+            eff = v['effective_date']
+            end = v.get('end_date')
+            if eff <= target_date_str and (end is None or target_date_str <= end):
+                return v
+        return None
 
     created = 0
     skipped_days = 0
@@ -331,7 +352,7 @@ def sync_attendance_from_timetable(semester_id, up_to_date=None):
                 "DELETE FROM attendance WHERE semester_id = ? AND date = ?;",
                 (semester_id, d_str)
             )
-            active_version = resolve_timetable_version(semester_id, d_str)
+            active_version = resolve_version_in_memory(d_str)
             if active_version:
                 entries = version_entries.get(active_version['id'], [])
                 weekday = extra_class_days.get(d_str, curr.weekday())
@@ -341,23 +362,21 @@ def sync_attendance_from_timetable(semester_id, up_to_date=None):
                     conn.execute("""
                         INSERT INTO attendance (semester_id, subject_id, date, time, status, version_id, notes)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(subject_id, date, time) DO UPDATE SET
+                        ON CONFLICT(user_id, subject_id, date, time) DO UPDATE SET
                             status = excluded.status,
                             version_id = excluded.version_id,
                             notes = excluded.notes;
                     """, (semester_id, entry['subject_id'], d_str, entry['start_time'], 'missed', active_version['id'], 'Holiday/No-class day'))
-            conn.commit()
             skipped_days += 1
             curr += timedelta(days=1)
             continue
 
-        active_version = resolve_timetable_version(semester_id, d_str)
+        active_version = resolve_version_in_memory(d_str)
         if not active_version:
             conn.execute("""
                 DELETE FROM attendance 
                 WHERE semester_id = ? AND date = ? AND (notes IS NULL OR notes = '' OR notes = 'Holiday/No-class day');
             """, (semester_id, d_str))
-            conn.commit()
             curr += timedelta(days=1)
             continue
 
@@ -367,12 +386,7 @@ def sync_attendance_from_timetable(semester_id, up_to_date=None):
         day_entries = [e for e in entries if e['day_of_week'] == weekday and e['subject_id'] not in cancelled_subs]
         active_keys = {f"{e['subject_id']}_{e['start_time']}" for e in day_entries}
 
-        existing = conn.execute("""
-            SELECT id, subject_id, time, version_id, notes, status
-            FROM attendance
-            WHERE semester_id = ? AND date = ?;
-        """, (semester_id, d_str)).fetchall()
-        
+        existing = attendance_by_date.get(d_str, [])
         for row in existing:
             key = f"{row['subject_id']}_{row['time']}"
             if key not in active_keys and (row['notes'] == '' or row['notes'] == 'Holiday/No-class day' or row['notes'] is None):
@@ -385,16 +399,16 @@ def sync_attendance_from_timetable(semester_id, up_to_date=None):
                 conn.execute("""
                     INSERT INTO attendance (semester_id, subject_id, date, time, status, version_id, notes)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(subject_id, date, time) DO UPDATE SET
+                    ON CONFLICT(user_id, subject_id, date, time) DO UPDATE SET
                         status = excluded.status,
                         version_id = excluded.version_id,
                         notes = excluded.notes;
                 """, (semester_id, entry['subject_id'], d_str, entry['start_time'], 'attended', active_version['id'], ''))
                 created += 1
 
-        conn.commit()
         curr += timedelta(days=1)
 
+    conn.commit()
     conn.close()
     return {'created': created, 'skipped_days': skipped_days}
 
