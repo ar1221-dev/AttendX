@@ -128,20 +128,23 @@ def rewrite_query(sql, params):
     if not target_table:
         return sql, params
 
-    if 'user_id' in sql.lower():
-        # Already contains user_id filter, skip rewrite
-        return sql, params
-
     # Handle INSERT queries
     if sql_upper.startswith('INSERT'):
         match = re.match(r'^(INSERT(?:\s+OR\s+\w+)?\s+INTO\s+(\w+)\s*\()([^)]+)(\)\s*VALUES\s*\()([^)]+)(\))', sql, re.IGNORECASE)
         if match:
             prefix, table, cols, middle, vals, suffix = match.groups()
+            # Only skip if user_id is already in the columns list
+            if 'user_id' in [c.strip().lower() for c in cols.split(',')]:
+                return sql, params
             new_cols = 'user_id, ' + cols
             new_vals = '?, ' + vals
             new_sql = f"{prefix}{new_cols}{middle}{new_vals}{suffix}"
             new_params = (_ACTIVE_USER_ID,) + tuple(params or ())
             return new_sql, new_params
+        return sql, params
+
+    if 'user_id' in sql.lower():
+        # Already contains user_id filter, skip rewrite
         return sql, params
 
     # Handle SELECT, UPDATE, DELETE queries
