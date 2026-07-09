@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+
+{% block title %}Attendance Prediction & Calculators - AttendX{% endblock %}
+{% block page_name %}Attendance Predictions & Analytics{% endblock %}
+{% block page_subtitle %}Forecast attendance and plan safe leaves{% endblock %}
+
+{% block content %}
+{% if not active_semester %}
+<div class="row justify-content-center align-items-center" style="min-height: 60vh;">
+    <div class="col-md-6">
+        <div class="glass-card text-center py-5">
+            <i class="fa-solid fa-graduation-cap text-primary mb-3" style="font-size: 4rem; filter: drop-shadow(var(--primary-neon));"></i>
+            <h2>No Active Semester</h2>
+            <p class="text-secondary max-width-500 mx-auto mb-4">Create and activate a semester first to run attendance predictions.</p>
+            <a href="/semesters" class="btn btn-primary"><i class="fa-solid fa-plus me-2"></i>Manage Semesters</a>
+        </div>
+    </div>
+</div>
+{% else %}
+
+<!-- Row 1: Safe Leaves -->
+<div class="row g-4 mb-4">
+
+    <!-- Safe Leaves Breakdown -->
+    <div class="col-12">
+        <div class="glass-card h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="card-title mb-0"><i class="fa-solid fa-shield-halved text-success"></i>Safe Leaves Summary</h5>
+            </div>
+            <p class="text-secondary small mb-3">Consequent classes you can skip without dropping below target ({{ active_semester.target }}%):</p>
+            <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                <table class="table table-borderless align-middle mb-0 text-white">
+                    <thead>
+                        <tr class="text-secondary small border-bottom border-secondary-subtle">
+                            <th>Subject</th>
+                            <th>Current %</th>
+                            <th class="text-end">Status Bounds</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sub_g in goals_leaves.subject_goals %}
+                        <tr>
+                            <td>
+                                <strong class="text-white">{{ sub_g.name }}</strong>
+                                <div class="text-muted small">{{ sub_g.code or 'No Code' }}</div>
+                            </td>
+                            <td>{{ sub_g.percentage }}%</td>
+                            <td class="text-end">
+                                {% if sub_g.safe_leaves > 0 %}
+                                <span class="badge bg-success-glow text-success border border-success border-opacity-25 font-monospace">
+                                    Can miss {{ sub_g.safe_leaves }}
+                                </span>
+                                {% else %}
+                                <span class="badge bg-danger-glow text-danger border border-danger border-opacity-25 font-monospace">
+                                    Attend next {{ sub_g.required }}
+                                </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Prediction Scenario Launcher -->
+    <div class="col-lg-5">
+        <!-- Scenario Simulator Card -->
+        <div class="glass-card mb-4">
+            <h5 class="card-title mb-3"><i class="fa-solid fa-wand-magic-sparkles text-primary"></i>Prediction Scenarios</h5>
+            <form id="predictionForm" onsubmit="runPrediction(event)">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Simulation Scenario</label>
+                    <select name="prediction_type" id="predictionTypeSelect" class="form-select" onchange="toggleScenarioInputs()" required>
+                        <option value="attend_all_remaining">If I attend all remaining classes</option>
+                        <option value="attend_until_date">If I attend every class until date...</option>
+                        <option value="attend_only_subject_until_date">If I attend only ONE subject classes until date...</option>
+                        <option value="miss_every_friday">If I miss every Friday</option>
+                        <option value="miss_next_n">If I miss the next N classes</option>
+                    </select>
+                </div>
+                
+                <!-- Scenario Specific Fields -->
+                <div class="mb-3 d-none" id="dateInputDiv">
+                    <label class="form-label fw-semibold" id="dateInputLabel">Target Date</label>
+                    <input type="date" name="target_date" id="targetDateInput" class="form-control" 
+                           min="{{ today_str }}"{% if active_semester.end_date %} max="{{ active_semester.end_date }}"{% elif semester_end_max %} max="{{ semester_end_max }}"{% endif %}>
+                </div>
+
+                <div class="mb-3 d-none" id="subjectInputDiv">
+                    <label class="form-label fw-semibold">Select Subject</label>
+                    <select name="subject_id" id="subjectInputSelect" class="form-select">
+                        {% for sub in subjects %}
+                        <option value="{{ sub.id }}">{{ sub.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="mb-3 d-none" id="numberInputDiv">
+                    <label class="form-label fw-semibold">Number of Classes (N)</label>
+                    <input type="number" name="param_n" id="numberInput" class="form-control" min="1" max="100" value="5">
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100 mt-2"><i class="fa-solid fa-play me-1"></i> Run Simulation</button>
+            </form>
+        </div>
+
+        <!-- Custom Range Calculator Card -->
+        <div class="glass-card">
+            <h5 class="card-title mb-3"><i class="fa-solid fa-calculator text-info"></i>Custom Range Attendance</h5>
+            <p class="text-secondary small mb-3">Calculate attendance stats exclusively for a selected date range:</p>
+            <form action="/prediction/range" method="GET">
+                <div class="row g-2 mb-3">
+                    <div class="col">
+                        <label class="form-label small text-secondary fw-semibold">Start Date</label>
+                        <input type="date" name="start_date" class="form-control form-control-sm" required
+                               min="{{ active_semester.start_date }}"{% if active_semester.end_date %} max="{{ active_semester.end_date }}"{% elif semester_end_max %} max="{{ semester_end_max }}"{% endif %}>
+                    </div>
+                    <div class="col">
+                        <label class="form-label small text-secondary fw-semibold">End Date</label>
+                        <input type="date" name="end_date" class="form-control form-control-sm" required
+                               min="{{ active_semester.start_date }}"{% if active_semester.end_date %} max="{{ active_semester.end_date }}"{% elif semester_end_max %} max="{{ semester_end_max }}"{% endif %}>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-outline-info btn-sm w-100"><i class="fa-solid fa-calculator me-1"></i> Calculate for Range</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Simulation Results Display -->
+    <div class="col-lg-7">
+        <div class="glass-card h-100">
+            <h5 class="card-title mb-3"><i class="fa-solid fa-square-poll-vertical text-primary"></i>Simulation Results</h5>
+            
+            <div id="simPlaceholder" class="text-center py-5 text-secondary">
+                <i class="fa-solid fa-wand-magic-sparkles mb-3 text-muted" style="font-size: 3rem; filter: drop-shadow(var(--primary-glow));"></i>
+                <p>Run a simulation scenario from the left to view predicted metrics.</p>
+            </div>
+
+            <div id="simLoading" class="text-center py-5 d-none">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="text-secondary mt-2 small">Computing scenario metrics...</p>
+            </div>
+
+            <div id="simResults" class="d-none animate-fade-in">
+                <!-- Subjects Details -->
+                <h6 class="mb-3 fw-bold text-white">Simulated Subject-wise Attendance:</h6>
+                <div class="table-responsive">
+                    <table class="table table-borderless align-middle text-white mb-0">
+                        <thead>
+                            <tr class="text-secondary small border-bottom border-secondary-subtle">
+                                <th>Subject</th>
+                                <th>Simulated Count</th>
+                                <th class="text-end">Simulated %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="simSubjectsTableBody">
+                            <!-- Dynamic rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function toggleScenarioInputs() {
+        const type = document.getElementById('predictionTypeSelect').value;
+        const dateDiv = document.getElementById('dateInputDiv');
+        const subjectDiv = document.getElementById('subjectInputDiv');
+        const numberDiv = document.getElementById('numberInputDiv');
+        
+        // Reset states
+        dateDiv.classList.add('d-none');
+        subjectDiv.classList.add('d-none');
+        numberDiv.classList.add('d-none');
+        
+        document.getElementById('targetDateInput').required = false;
+        document.getElementById('numberInput').required = false;
+        
+        if (type === 'attend_until_date') {
+            dateDiv.classList.remove('d-none');
+            document.getElementById('dateInputLabel').innerText = "Target Date";
+            document.getElementById('targetDateInput').required = true;
+        } else if (type === 'attend_only_subject_until_date') {
+            dateDiv.classList.remove('d-none');
+            subjectDiv.classList.remove('d-none');
+            document.getElementById('dateInputLabel').innerText = "Target Date";
+            document.getElementById('targetDateInput').required = true;
+        } else if (type === 'miss_next_n') {
+            numberDiv.classList.remove('d-none');
+            document.getElementById('numberInput').required = true;
+        }
+    }
+
+    function runPrediction(event) {
+        event.preventDefault();
+        
+        const type = document.getElementById('predictionTypeSelect').value;
+        const dateVal = document.getElementById('targetDateInput').value;
+        const subId = document.getElementById('subjectInputSelect').value;
+        const numVal = document.getElementById('numberInput').value;
+        
+        document.getElementById('simPlaceholder').classList.add('d-none');
+        document.getElementById('simResults').classList.add('d-none');
+        document.getElementById('simLoading').classList.remove('d-none');
+        
+        fetch('/api/simulate_prediction', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                prediction_type: type,
+                target_date: dateVal,
+                subject_id: subId,
+                param_n: numVal
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('simLoading').classList.add('d-none');
+            
+            if (data.error) {
+                alert(data.error);
+                document.getElementById('simPlaceholder').classList.remove('d-none');
+                return;
+            }
+            
+            // Render simulated subjects list
+            const tbody = document.getElementById('simSubjectsTableBody');
+            tbody.innerHTML = '';
+            const targetVal = {{ active_semester.target }};
+            
+            data.subjects.forEach(sub => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>
+                        <strong class="text-white">${sub.name}</strong>
+                        <div class="text-muted small">${sub.code || ''}</div>
+                    </td>
+                    <td>
+                        <span class="fw-bold">${sub.attended}</span> / <span class="text-muted">${sub.total}</span>
+                    </td>
+                    <td class="text-end">
+                        <span class="fw-bold ${sub.percentage >= targetVal ? 'text-success' : 'text-danger'}">${sub.percentage}%</span>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            
+            document.getElementById('simResults').classList.remove('d-none');
+        })
+        .catch(err => {
+            document.getElementById('simLoading').classList.add('d-none');
+            document.getElementById('simPlaceholder').classList.remove('d-none');
+            alert("Calculation failed. Please verify dates are correct.");
+        });
+    }
+    
+    // Initialize
+    toggleScenarioInputs();
+</script>
+{% endblock %}

@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+
+{% block title %}Leaves & Holidays - AttendX{% endblock %}
+{% block page_name %}Leaves & Holidays{% endblock %}
+{% block page_subtitle %}Manage holidays, leaves, and schedule exceptions{% endblock %}
+
+{% block content %}
+{% if not active_semester %}
+<div class="row justify-content-center align-items-center" style="min-height: 60vh;">
+    <div class="col-md-6">
+        <div class="glass-card text-center py-5">
+            <i class="fa-solid fa-graduation-cap text-primary mb-3" style="font-size: 4rem; filter: drop-shadow(var(--primary-neon));"></i>
+            <h2>No Active Semester</h2>
+            <p class="text-secondary max-width-500 mx-auto mb-4">Create and activate a semester first to configure holidays and class cancellation events.</p>
+            <a href="/semesters" class="btn btn-primary"><i class="fa-solid fa-plus me-2"></i>Manage Semesters</a>
+        </div>
+    </div>
+</div>
+{% else %}
+
+<div class="row g-4">
+    <!-- Leave summary -->
+    {% if leave_summary and leave_summary.total_days > 0 %}
+    <div class="col-12">
+        <div class="glass-card">
+            <div class="row g-3 text-center">
+                <div class="col-md-4 border-end border-secondary-subtle">
+                    <div class="fs-2 fw-bold text-info">{{ leave_summary.total_days }}</div>
+                    <small class="text-secondary fw-semibold">Total Leave Days Recorded</small>
+                </div>
+                <div class="col-md-4 border-end border-secondary-subtle">
+                    <div class="fs-2 fw-bold text-primary">{{ leave_summary.excluded_classes }}</div>
+                    <small class="text-secondary fw-semibold">Classes Excluded from Attendance</small>
+                </div>
+                <div class="col-md-4">
+                    <div class="fs-2 fw-bold text-success">{{ leave_summary.holiday_count }}</div>
+                    <small class="text-secondary fw-semibold">Holiday Exclusions</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Configuration forms (Holidays / No Class Days) -->
+    <div class="col-lg-4">
+        <!-- Bulk Upload Leaves -->
+        <div class="glass-card mb-4">
+            <h5 class="card-title mb-3"><i class="fa-solid fa-file-excel text-primary"></i>Upload Leaves</h5>
+            <form action="/upload_leaves" method="POST" enctype="multipart/form-data">
+                <p class="text-secondary small mb-3">Upload a CSV/Excel with column names: <strong>Date</strong> and <strong>Reason</strong>.</p>
+                <div class="mb-3">
+                    <input type="file" name="file" class="form-control" accept=".xlsx,.csv" required>
+                </div>
+                <button type="submit" class="btn btn-sm btn-outline-primary w-100"><i class="fa-solid fa-upload me-1"></i> Import Leaves</button>
+            </form>
+        </div>
+
+        <!-- Add Holiday Card -->
+        <div class="glass-card mb-4">
+            <h5 class="card-title mb-3"><i class="fa-solid fa-calendar-check text-info"></i>Add Holiday / Leave</h5>
+            <form action="/add_holiday" method="POST">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Date</label>
+                    <input type="date" name="date" class="form-control" 
+                           min="{{ active_semester.start_date }}"{% if active_semester.end_date %} max="{{ active_semester.end_date }}"{% elif semester_end_max %} max="{{ semester_end_max }}"{% endif %} required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Holiday Reason</label>
+                    <input type="text" name="reason" class="form-control" placeholder="e.g., Autumn Break, Christmas" required>
+                </div>
+                <button type="submit" class="btn btn-sm btn-primary w-100"><i class="fa-solid fa-plus me-1"></i> Save Leave Day</button>
+            </form>
+        </div>
+
+        <!-- Add No Class Day Card -->
+        <div class="glass-card">
+            <h5 class="card-title mb-3"><i class="fa-solid fa-circle-exclamation text-warning"></i>Add No-Class Day</h5>
+            <form action="/add_no_class_day" method="POST">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Date</label>
+                    <input type="date" name="date" class="form-control" 
+                           min="{{ active_semester.start_date }}"{% if active_semester.end_date %} max="{{ active_semester.end_date }}"{% elif semester_end_max %} max="{{ semester_end_max }}"{% endif %} required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Reason Category</label>
+                    <select name="reason" class="form-select" required>
+                        <option value="college_closed">College Closed</option>
+                        <option value="teacher_absent">Teacher Absent</option>
+                        <option value="event_day">Event Day</option>
+                        <option value="strike">Strike / Bandh</option>
+                        <option value="exam_leave">Exam Leave</option>
+                        <option value="custom">Custom Reason</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Notes</label>
+                    <textarea name="description" class="form-control" rows="2" placeholder="Optional notes..."></textarea>
+                </div>
+                <button type="submit" class="btn btn-sm btn-warning w-100"><i class="fa-solid fa-plus me-1"></i> Cancel Classes</button>
+            </form>
+        </div>
+        
+        <!-- Add Cancelled Subject Class Card -->
+        <div class="glass-card mt-4">
+            <h5 class="card-title mb-3"><i class="fa-solid fa-ban text-danger"></i>Cancel Subject Class</h5>
+            <form action="/add_cancelled_class" method="POST">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Date</label>
+                    <input type="date" name="date" class="form-control" 
+                           min="{{ active_semester.start_date }}"{% if active_semester.end_date %} max="{{ active_semester.end_date }}"{% elif semester_end_max %} max="{{ semester_end_max }}"{% endif %} required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Subject</label>
+                    <select name="subject_id" class="form-select" required>
+                        <option value="" disabled selected>Select subject to cancel</option>
+                        {% for sub in subjects %}
+                        <option value="{{ sub.id }}">{{ sub.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Reason (Optional)</label>
+                    <input type="text" name="reason" class="form-control" placeholder="e.g., Faculty Leave">
+                </div>
+                <button type="submit" class="btn btn-sm btn-danger w-100"><i class="fa-solid fa-plus me-1"></i> Cancel Class</button>
+            </form>
+        </div>
+
+        <!-- Add Extra Class Day Card -->
+        <div class="glass-card mt-4">
+            <h5 class="card-title mb-3"><i class="fa-solid fa-calendar-plus text-success"></i>Extra Class Day</h5>
+            <form action="/add_extra_class_day" method="POST">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Date of Extra Classes</label>
+                    <input type="date" name="date" class="form-control" 
+                           min="{{ active_semester.start_date }}"{% if active_semester.end_date %} max="{{ active_semester.end_date }}"{% elif semester_end_max %} max="{{ semester_end_max }}"{% endif %} required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Follow Routine Of</label>
+                    <select name="day_to_follow" class="form-select" required>
+                        <option value="0">Monday</option>
+                        <option value="1">Tuesday</option>
+                        <option value="2">Wednesday</option>
+                        <option value="3">Thursday</option>
+                        <option value="4">Friday</option>
+                        <option value="5">Saturday</option>
+                        <option value="6">Sunday</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Reason (Optional)</label>
+                    <input type="text" name="reason" class="form-control" placeholder="e.g., Make-up Day">
+                </div>
+                <button type="submit" class="btn btn-sm btn-success w-100"><i class="fa-solid fa-plus me-1"></i> Add Extra Day</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Lists of Off Days -->
+    <div class="col-lg-8">
+        <div class="glass-card h-100">
+            <nav class="mb-4">
+                <div class="nav nav-tabs border-secondary-subtle" id="nav-tab" role="tablist">
+                    <button class="nav-link active text-white" id="nav-holidays-tab" data-bs-toggle="tab" data-bs-target="#nav-holidays" type="button" role="tab" style="box-shadow: none;">
+                        <i class="fa-solid fa-umbrella-beach text-info me-1"></i> Holidays ({{ holidays | length }})
+                    </button>
+                    <button class="nav-link text-white" id="nav-noclasses-tab" data-bs-toggle="tab" data-bs-target="#nav-noclasses" type="button" role="tab" style="box-shadow: none;">
+                        <i class="fa-solid fa-circle-exclamation text-warning me-1"></i> Cancelled Day ({{ no_class_days | length }})
+                    </button>
+                    <button class="nav-link text-white" id="nav-cancelled-sub-tab" data-bs-toggle="tab" data-bs-target="#nav-cancelled-sub" type="button" role="tab" style="box-shadow: none;">
+                        <i class="fa-solid fa-ban text-danger me-1"></i> Cancelled Class ({{ cancelled_classes | length }})
+                    </button>
+                    <button class="nav-link text-white" id="nav-extra-tab" data-bs-toggle="tab" data-bs-target="#nav-extra" type="button" role="tab" style="box-shadow: none;">
+                        <i class="fa-solid fa-calendar-plus text-success me-1"></i> Extra Class ({{ extra_class_days | length }})
+                    </button>
+                </div>
+            </nav>
+
+            <div class="tab-content" id="nav-tabContent">
+                <!-- Holidays Tab -->
+                <div class="tab-pane fade show active" id="nav-holidays" role="tabpanel">
+                    {% if not holidays %}
+                    <div class="text-center py-5 text-secondary">
+                        <i class="fa-regular fa-calendar-check mb-3 text-muted" style="font-size: 3rem;"></i>
+                        <p>No holidays configured yet. Use the sidebar form to add holidays.</p>
+                    </div>
+                    {% else %}
+                    <div class="table-responsive">
+                        <table class="table table-borderless text-white align-middle mb-0">
+                            <thead>
+                                <tr class="text-secondary border-bottom border-secondary-subtle">
+                                    <th>Date</th>
+                                    <th>Reason</th>
+                                    <th>Classes Excluded</th>
+                                    <th class="text-end">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for h in holidays %}
+                                <tr>
+                                    <td class="font-monospace fw-bold text-info">{{ h.date }}</td>
+                                    <td>{{ h.reason }}</td>
+                                    <td>
+                                        <span class="badge bg-primary-glow text-primary">{{ leave_by_date.get(h.date, 0) }} classes</span>
+                                    </td>
+                                    <td class="text-end">
+                                        <a href="/delete_holiday/{{ h.id }}" class="btn btn-sm btn-outline-danger p-1 py-0 px-2" onclick="return confirm('Remove this holiday?')">
+                                            <i class="fa-solid fa-trash"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- No Class Days Tab -->
+                <div class="tab-pane fade" id="nav-noclasses" role="tabpanel">
+                    {% if not no_class_days %}
+                    <div class="text-center py-5 text-secondary">
+                        <i class="fa-regular fa-circle-xmark mb-3 text-muted" style="font-size: 3rem;"></i>
+                        <p>No class cancellation days configured yet.</p>
+                    </div>
+                    {% else %}
+                    <div class="table-responsive">
+                        <table class="table table-borderless text-white align-middle mb-0">
+                            <thead>
+                                <tr class="text-secondary border-bottom border-secondary-subtle">
+                                    <th>Date</th>
+                                    <th>Reason Category</th>
+                                    <th>Description / Notes</th>
+                                    <th class="text-end">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for n in no_class_days %}
+                                <tr>
+                                    <td class="font-monospace fw-bold text-warning">{{ n.date }}</td>
+                                    <td>
+                                        <span class="badge bg-warning-glow text-warning border border-warning border-opacity-25 text-capitalize py-1 px-2">
+                                            {{ n.reason | replace('_', ' ') }}
+                                        </span>
+                                    </td>
+                                    <td>{{ n.custom_description or '-' }}</td>
+                                    <td class="text-end">
+                                        <a href="/delete_no_class_day/{{ n.id }}" class="btn btn-sm btn-outline-danger p-1 py-0 px-2" onclick="return confirm('Restore classes for this day?')">
+                                            <i class="fa-solid fa-trash"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <!-- Cancelled Subject Classes Tab -->
+                <div class="tab-pane fade" id="nav-cancelled-sub" role="tabpanel">
+                    {% if not cancelled_classes %}
+                    <div class="text-center py-5 text-secondary">
+                        <i class="fa-solid fa-ban mb-3 text-muted" style="font-size: 3rem;"></i>
+                        <p>No cancelled subject classes configured yet.</p>
+                    </div>
+                    {% else %}
+                    <div class="table-responsive">
+                        <table class="table table-borderless text-white align-middle mb-0">
+                            <thead>
+                                <tr class="text-secondary border-bottom border-secondary-subtle">
+                                    <th>Date</th>
+                                    <th>Subject</th>
+                                    <th>Reason</th>
+                                    <th class="text-end">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for c in cancelled_classes %}
+                                <tr>
+                                    <td class="font-monospace fw-bold text-danger">{{ c.date }}</td>
+                                    <td>
+                                        <strong class="text-white">{{ c.subject_name }}</strong>
+                                        <div class="text-muted small">{{ c.subject_code }}</div>
+                                    </td>
+                                    <td>{{ c.reason or '-' }}</td>
+                                    <td class="text-end">
+                                        <a href="/delete_cancelled_class/{{ c.id }}" class="btn btn-sm btn-outline-danger p-1 py-0 px-2" onclick="return confirm('Restore this class?')">
+                                            <i class="fa-solid fa-trash"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Extra Class Days Tab -->
+                <div class="tab-pane fade" id="nav-extra" role="tabpanel">
+                    {% if not extra_class_days %}
+                    <div class="text-center py-5 text-secondary">
+                        <i class="fa-regular fa-calendar-plus mb-3 text-muted" style="font-size: 3rem;"></i>
+                        <p>No extra class days configured yet.</p>
+                    </div>
+                    {% else %}
+                    <div class="table-responsive">
+                        <table class="table table-borderless text-white align-middle mb-0">
+                            <thead>
+                                <tr class="text-secondary border-bottom border-secondary-subtle">
+                                    <th>Date</th>
+                                    <th>Follows Routine</th>
+                                    <th>Reason</th>
+                                    <th class="text-end">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for e in extra_class_days %}
+                                <tr>
+                                    <td class="font-monospace fw-bold text-success">{{ e.date }}</td>
+                                    <td>
+                                        {% set days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] %}
+                                        <span class="badge bg-success-glow text-success border border-success border-opacity-25">{{ days[e.day_to_follow] }}</span>
+                                    </td>
+                                    <td>{{ e.reason or '-' }}</td>
+                                    <td class="text-end">
+                                        <a href="/delete_extra_class_day/{{ e.id }}" class="btn btn-sm btn-outline-danger p-1 py-0 px-2" onclick="return confirm('Remove extra class day?')">
+                                            <i class="fa-solid fa-trash"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}

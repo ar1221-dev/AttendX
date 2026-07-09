@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Custom Range Analysis - AttendX{% endblock %}
+{% block page_name %}Custom Range Attendance Analysis{% endblock %}
+{% block page_subtitle %}Analyze attendance trends over a date range{% endblock %}
+
+{% block content %}
+<div class="glass-card mb-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h4 class="mb-1"><i class="fa-solid fa-calendar-range text-info me-2"></i>Date Range Report</h4>
+            <p class="text-secondary small mb-0">Showing attendance metrics for period: <strong>{{ start_date }}</strong> to <strong>{{ end_date }}</strong></p>
+        </div>
+        <a href="/prediction" class="btn btn-outline-light btn-sm"><i class="fa-solid fa-arrow-left me-1"></i> Back to Predictions</a>
+    </div>
+</div>
+
+
+<!-- Subject breakdown for range -->
+<div class="glass-card">
+    <h5 class="mb-4"><i class="fa-solid fa-book-open text-primary me-2"></i>Subject-wise Stats in Range</h5>
+    <div class="table-responsive">
+        <table class="table table-borderless align-middle text-white">
+            <thead>
+                <tr class="text-secondary border-bottom border-secondary-subtle">
+                    <th>Subject</th>
+                    <th>Attended / Conducted</th>
+                    <th>Progress</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sub in subjects %}
+                <tr>
+                    <td>
+                        <div class="fw-bold">{{ sub.name }}</div>
+                        <div class="text-muted small">{{ sub.code or 'No Code' }}</div>
+                    </td>
+                    <td>
+                        <span class="fw-semibold">{{ sub.attended }}</span> / <span class="text-muted">{{ sub.total }}</span>
+                    </td>
+                    <td style="width: 50%;">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="progress w-100" style="height: 6px;">
+                                <div class="progress-bar {% if sub.percentage >= active_semester.target %}bg-success{% else %}bg-danger{% endif %}" 
+                                     role="progressbar" 
+                                     style="width: {{ sub.percentage }}%" 
+                                     aria-valuenow="{{ sub.percentage }}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100"></div>
+                            </div>
+                            <span class="small fw-semibold">{{ sub.percentage }}%</span>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

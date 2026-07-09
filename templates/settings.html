@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - AttendX{% endblock %}
+{% block page_name %}Application Settings{% endblock %}
+{% block page_subtitle %}Preferences, backups, and app configuration{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <!-- General Preferences Settings -->
+    <div class="col-lg-6">
+        <div class="glass-card mb-4">
+            <h5 class="card-title mb-3"><i class="fa-solid fa-sliders text-primary"></i>General Preferences</h5>
+            <form action="/save_settings" method="POST">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Default Target Attendance (%)</label>
+                    <input type="number" step="0.5" name="default_target" class="form-control" 
+                           value="{{ settings.default_target }}" min="0" max="100" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Attendance Goal Milestones (%)</label>
+                    <input type="text" name="custom_goals" class="form-control" 
+                           value="{{ settings.custom_goals or '75,80,85,90' }}" placeholder="75,80,85,90">
+                    <small class="text-secondary d-block mt-1">Comma-separated percentages shown on dashboard.</small>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">First Day of Week</label>
+                    <select name="first_day_of_week" class="form-select">
+                        <option value="1" {% if settings.first_day_of_week == '1' %}selected{% endif %}>Monday</option>
+                        <option value="0" {% if settings.first_day_of_week == '0' %}selected{% endif %}>Sunday</option>
+                    </select>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col">
+                        <label class="form-label fw-semibold">Date Format</label>
+                        <select name="date_format" class="form-select">
+                            <option value="%Y-%m-%d" {% if settings.date_format == '%Y-%m-%d' %}selected{% endif %}>YYYY-MM-DD</option>
+                            <option value="%d-%m-%Y" {% if settings.date_format == '%d-%m-%Y' %}selected{% endif %}>DD-MM-YYYY</option>
+                            <option value="%m/%d/%Y" {% if settings.date_format == '%m/%d/%Y' %}selected{% endif %}>MM/DD/YYYY</option>
+                        </select>
+                    </div>
+                    <div class="col">
+                        <label class="form-label fw-semibold">Time Format</label>
+                        <select name="time_format" class="form-select">
+                            <option value="%H:%M" {% if settings.time_format == '%H:%M' %}selected{% endif %}>24-hour (HH:MM)</option>
+                            <option value="%I:%M %p" {% if settings.time_format == '%I:%M %p' %}selected{% endif %}>12-hour (HH:MM AM/PM)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-check form-switch mb-4">
+                    <input class="form-check-input" type="checkbox" role="switch" name="auto_backup" value="true"
+                           id="autoBackupCheck" {% if settings.auto_backup == 'true' %}checked{% endif %}>
+                    <label class="form-check-label text-white small" for="autoBackupCheck">
+                        Enable Automatic Local Backup on startup
+                    </label>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100"><i class="fa-solid fa-floppy-disk me-1"></i> Save Preferences</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Database Backup & Restore -->
+    <div class="col-lg-6">
+        <div class="glass-card mb-4">
+            <h5 class="card-title mb-3"><i class="fa-solid fa-database text-warning"></i>Database Export & Import</h5>
+            <p class="text-secondary small mb-4">Download your data backup file or restore database configurations instantly.</p>
+            
+            <div class="row g-2 mb-4">
+                <div class="col-sm-6">
+                    <a href="/backup/export" class="btn btn-sm btn-outline-primary w-100">
+                        <i class="fa-solid fa-download me-1"></i> Export Database (.db)
+                    </a>
+                </div>
+                <div class="col-sm-6">
+                    <button class="btn btn-sm btn-outline-primary w-100" data-bs-toggle="modal" data-bs-target="#importDbModal">
+                        <i class="fa-solid fa-upload me-1"></i> Import/Restore (.db)
+                    </button>
+                </div>
+            </div>
+
+            <hr class="border-secondary-subtle my-3">
+
+            <h6 class="mb-3 text-white fw-bold">Manual Backup Restore Point:</h6>
+            <a href="/backup/manual_local" class="btn btn-sm btn-primary"><i class="fa-solid fa-shield-cat me-1"></i> Create Local Backup</a>
+        </div>
+
+        <!-- Local Backup history log -->
+        <div class="glass-card">
+            <h5 class="card-title mb-3"><i class="fa-solid fa-clock-rotate-left text-info"></i>Backup History Logs</h5>
+            <p class="text-secondary small">Local server filesystem restoration logs.</p>
+            
+            {% if not backup_logs %}
+            <p class="text-secondary small text-center my-3">No local restore points created yet.</p>
+            {% else %}
+            <div style="max-height: 200px; overflow-y: auto;">
+                <ul class="list-group list-group-flush bg-transparent">
+                    {% for log in backup_logs %}
+                    <li class="list-group-item bg-transparent text-white px-0 py-2 border-secondary-subtle d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="small font-monospace text-secondary d-block">{{ log.filename }}</span>
+                            <small class="text-muted"><i class="fa-regular fa-clock me-1"></i>{{ log.backup_time }}</small>
+                        </div>
+                        <div class="btn-group btn-group-sm">
+                            <a href="/backup/restore_local/{{ log.id }}" class="btn btn-outline-primary py-1 px-2" onclick="return confirm('Restore this database? All unsaved updates will be overwritten.')">Restore</a>
+                            <a href="/backup/delete_local/{{ log.id }}" class="btn btn-outline-danger py-1 px-2" onclick="return confirm('Delete this backup file?')"><i class="fa-solid fa-xmark"></i></a>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Import DB Modal -->
+<div class="modal fade" id="importDbModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <form action="/backup/import" method="POST" enctype="multipart/form-data" class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold text-danger">Restore Database from File</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger mb-3 small">
+                    <i class="fa-solid fa-triangle-exclamation me-1"></i>
+                    <strong>WARNING:</strong> Restoring database will permanently overwrite all active profiles and timetable schedules. This action is irreversible.
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Select .db File</label>
+                    <input type="file" name="db_file" class="form-control" accept=".db" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-sm btn-danger">Import & Overwrite</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

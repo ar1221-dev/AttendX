@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - AttendX{% endblock %}
+{% block page_name %}Dashboard{% endblock %}
+{% block page_subtitle %}Overview of your attendance{% endblock %}
+
+{% block content %}
+{% if not active_semester %}
+<div class="row justify-content-center align-items-center empty-state-lg">
+    <div class="col-lg-8 col-xl-6">
+        <div class="glass-card empty-state-card">
+            <i class="fa-solid fa-rocket text-primary empty-icon-lg" aria-hidden="true"></i>
+            <h2>Welcome to AttendX</h2>
+            <p class="mb-4">Configure your semester and upload your timetable to unlock automated tracking and analytics.</p>
+
+            <form action="/quick_start" method="POST" enctype="multipart/form-data" id="quickStartForm" class="text-start mx-auto" style="max-width: 440px;">
+                <div class="mb-4">
+                    <label class="form-label" for="semesterName">Semester Name</label>
+                    <input type="text" name="semester_name" id="semesterName" class="form-control form-control-lg"
+                           placeholder="e.g., Semester 5" required>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label" for="startDate">Start Date <span class="text-danger">*</span></label>
+                    <input type="date" name="start_date" id="startDate" class="form-control form-control-lg" required value="{{ today_str }}">
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label" for="timetableFileInput">Timetable File</label>
+                    <div class="upload-dropzone" id="dropZone" onclick="document.getElementById('timetableFileInput').click()">
+                        <input type="file" name="timetable_file" id="timetableFileInput" accept=".xlsx,.csv" required class="visually-hidden" onchange="handleFileSelect(this)">
+                        <div id="dropZoneContent">
+                            <i class="fa-solid fa-cloud-arrow-up text-primary upload-dropzone-icon" aria-hidden="true"></i>
+                            <p class="mb-1 fw-semibold text-body">Drag & drop your timetable here</p>
+                            <p class="text-secondary caption mb-0">or click to browse (.xlsx or .csv)</p>
+                        </div>
+                        <div id="dropZoneFile" class="d-none">
+                            <i class="fa-solid fa-file-circle-check text-success upload-dropzone-icon" aria-hidden="true"></i>
+                            <p class="mb-0 fw-semibold text-success" id="selectedFileName"></p>
+                            <p class="text-secondary caption mb-0">Click to change file</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-center">
+                    <button type="submit" class="btn btn-primary btn-lg px-5">
+                        <i class="fa-solid fa-bolt" aria-hidden="true"></i> Initialize Workspace
+                    </button>
+                </div>
+            </form>
+
+            <div class="mt-4">
+                <a href="/semesters" class="text-secondary caption text-decoration-none">
+                    <i class="fa-solid fa-sliders me-1" aria-hidden="true"></i>Configure manually instead
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<!-- Subject Health Overview -->
+<div class="row g-4 mb-4">
+    <div class="col-12">
+        <h5 class="card-title mb-3">
+            <i class="fa-solid fa-heart-pulse text-danger" aria-hidden="true"></i>Subject Health Overview
+        </h5>
+
+        <div class="row g-3">
+            {% set target = active_semester.target or 75.0 %}
+            {% set ns = namespace(has_critical=false) %}
+
+            {% for sub in stats.subjects %}
+                {% if sub.percentage < target %}
+                    {% set ns.has_critical = true %}
+                    <div class="col-md-6 col-xl-3">
+                        <div class="glass-card glass-card-compact border-accent-danger">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fw-semibold text-body text-truncate" title="{{ sub.name }}">{{ sub.name }}</span>
+                                <span class="badge bg-danger-glow">{{ sub.percentage }}%</span>
+                            </div>
+                            <div class="text-secondary caption d-flex justify-content-between">
+                                <span>{{ sub.attended }}/{{ sub.total }} classes</span>
+                                <span class="text-danger fw-semibold">Below {{ target }}%</span>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+            {% endfor %}
+
+            {% if not ns.has_critical %}
+                <div class="col-12">
+                    <div class="glass-card border-dashed-success empty-state-card py-5">
+                        <i class="fa-solid fa-shield-halved text-success empty-icon" aria-hidden="true"></i>
+                        <h5 class="mb-1">All Subjects Healthy</h5>
+                        <p class="mb-0">You are meeting the {{ target }}% attendance target across all subjects.</p>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Subject Attendance + Today's Schedule -->
+<div class="row g-4 mb-4">
+    <div class="col-xl-8">
+        <div class="glass-card h-100">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h5 class="card-title mb-0">
+                    <i class="fa-solid fa-book-open text-primary" aria-hidden="true"></i>Subject-wise Attendance
+                </h5>
+                <a href="/semesters" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+
+            <div class="subject-scroller">
+                {% for sub in stats.subjects %}
+                <div class="glass-card glass-card-compact subject-scroller-card">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="subject-card-icon bg-primary-glow">
+                            {% if 'DSA' in (sub.code or '') or 'CNDC' in (sub.code or '') or 'CS' in (sub.code or '') or 'Code' in (sub.code or '') %}
+                                <i class="fa-solid fa-code" aria-hidden="true"></i>
+                            {% elif 'DBMS' in (sub.code or '') or 'OS' in (sub.code or '') %}
+                                <i class="fa-solid fa-database" aria-hidden="true"></i>
+                            {% else %}
+                                <i class="fa-solid fa-square-root-variable" aria-hidden="true"></i>
+                            {% endif %}
+                        </div>
+                        <span class="chip chip-mono fw-bold {% if sub.percentage >= active_semester.target %}text-success{% else %}text-danger{% endif %}">
+                            {{ sub.percentage }}%
+                        </span>
+                    </div>
+
+                    <div class="progress-ring-container mb-3">
+                        <svg width="72" height="72" class="progress-ring" aria-hidden="true">
+                            <circle stroke="var(--border-subtle)" stroke-width="5" fill="transparent" r="30" cx="36" cy="36"/>
+                            <circle stroke="{% if sub.percentage >= active_semester.target %}var(--success){% else %}var(--danger){% endif %}" stroke-width="5" fill="transparent" r="30" cx="36" cy="36"
+                                    stroke-dasharray="188.49" stroke-dashoffset="{{ 188.49 - (188.49 * sub.percentage / 100) }}"/>
+                        </svg>
+                        <div class="progress-ring-text">{{ sub.percentage | int }}%</div>
+                    </div>
+
+                    <h6 class="fw-semibold text-body text-truncate mb-0" title="{{ sub.name }}">{{ sub.name }}</h6>
+                    <small class="text-secondary caption d-block mt-1 chip-mono">{{ sub.attended }}/{{ sub.total }} classes</small>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-4">
+        <div class="glass-card h-100 d-flex flex-column justify-content-between">
+            <div>
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h5 class="card-title mb-0">
+                        <i class="fa-solid fa-clock text-info" aria-hidden="true"></i>Today's Schedule
+                    </h5>
+                    <span class="chip chip-mono">{{ today_str }}</span>
+                </div>
+
+                {% if special_day %}
+                <div class="alert alert-{% if special_day.type == 'holiday' %}info{% else %}secondary{% endif %} mb-0 small">
+                    <i class="fa-solid {% if special_day.type == 'holiday' %}fa-umbrella-beach{% else %}fa-circle-exclamation{% endif %} me-2" aria-hidden="true"></i>
+                    <strong>{{ special_day.type | capitalize }}:</strong> {{ special_day.reason | replace('_', ' ') }}
+                </div>
+                {% elif not today_timetable %}
+                <p class="text-secondary caption text-center py-4 mb-0">No classes scheduled for today.</p>
+                {% else %}
+                <div class="timeline-schedule">
+                    {% for entry in today_timetable %}
+                    <div class="timeline-schedule-item">
+                        <div class="timeline-schedule-dot {% if entry.marked %}{% if entry.marked_status == 'attended' %}success{% else %}danger{% endif %}{% endif %}"></div>
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <span class="timeline-time">{{ entry.start_time }}</span>
+                                <h6 class="timeline-subject mb-0 mt-1">{{ entry.subject_name }}</h6>
+                                <small class="timeline-meta"><i class="fa-solid fa-location-dot me-1" aria-hidden="true"></i>{{ entry.room or 'N/A' }}</small>
+                            </div>
+                            <span class="chip chip-mono">
+                                {% if entry.marked %}{{ entry.marked_status | capitalize }}{% else %}Pending{% endif %}
+                            </span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="mt-4 pt-3 border-top">
+                <a href="/daily" class="btn btn-sm btn-outline-primary w-100">
+                    <i class="fa-solid fa-circle-check" aria-hidden="true"></i> View Full Timetable
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="bottom-quote-bar mb-4">
+    <i class="fa-solid fa-wand-magic-sparkles text-primary me-2" aria-hidden="true"></i>"Consistency today, success tomorrow."
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const dropZone = document.getElementById('dropZone');
+    if (dropZone) {
+        ['dragenter', 'dragover'].forEach(evt => {
+            dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        });
+        ['dragleave', 'drop'].forEach(evt => {
+            dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.remove('dragover'); });
+        });
+        dropZone.addEventListener('drop', e => {
+            const input = document.getElementById('timetableFileInput');
+            if (e.dataTransfer.files.length) {
+                input.files = e.dataTransfer.files;
+                handleFileSelect(input);
+            }
+        });
+    }
+
+    function handleFileSelect(input) {
+        if (input.files && input.files[0]) {
+            document.getElementById('dropZoneContent').classList.add('d-none');
+            document.getElementById('dropZoneFile').classList.remove('d-none');
+            document.getElementById('selectedFileName').textContent = input.files[0].name;
+        }
+    }
+</script>
+{% endblock %}

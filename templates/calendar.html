@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+
+{% block title %}Calendar View - AttendX{% endblock %}
+{% block page_name %}Attendance Calendar{% endblock %}
+{% block page_subtitle %}Monthly view of your attendance history{% endblock %}
+
+{% block content %}
+{% if not active_semester %}
+<div class="row justify-content-center align-items-center empty-state">
+    <div class="col-md-6">
+        <div class="glass-card empty-state-card">
+            <i class="fa-solid fa-graduation-cap text-primary empty-icon-lg" aria-hidden="true"></i>
+            <h2>No Active Semester</h2>
+            <p class="text-secondary max-width-500 mx-auto mb-4">Configure a semester first to view your calendar details.</p>
+            <a href="/semesters" class="btn btn-primary"><i class="fa-solid fa-plus me-2"></i>Manage Semesters</a>
+        </div>
+    </div>
+</div>
+{% else %}
+
+<div class="row g-4 position-relative">
+    <!-- Calendar Card -->
+    <div class="col-lg-9 col-xl-10">
+        <div class="glass-card">
+            <!-- Navigation -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="mb-0 fw-bold text-body" id="currentMonthYear">
+                    {{ month_name }} {{ year }}
+                </h4>
+                <div class="btn-group">
+                    <a href="/calendar?year={{ prev_year }}&month={{ prev_month }}" class="btn btn-sm btn-outline-primary"><i class="fa-solid fa-chevron-left"></i></a>
+                    <a href="/calendar" class="btn btn-sm btn-outline-primary px-3">Today</a>
+                    <a href="/calendar?year={{ next_year }}&month={{ next_month }}" class="btn btn-sm btn-outline-primary"><i class="fa-solid fa-chevron-right"></i></a>
+                </div>
+            </div>
+
+            <!-- Calendar Grid -->
+            <div class="calendar-grid">
+                <!-- Day of week headings -->
+                <div class="calendar-day-header">Mon</div>
+                <div class="calendar-day-header">Tue</div>
+                <div class="calendar-day-header">Wed</div>
+                <div class="calendar-day-header">Thu</div>
+                <div class="calendar-day-header">Fri</div>
+                <div class="calendar-day-header">Sat</div>
+                <div class="calendar-day-header">Sun</div>
+
+                <!-- Calendar Days cells -->
+                {% for cell in calendar_cells %}
+                {% if cell.is_empty %}
+                <div class="calendar-day-cell other-month opacity-25" style="pointer-events: none;"></div>
+                {% else %}
+                {% set status_class = "" %}
+                {% set event = events.get(cell.date_str) %}
+                {% if event %}
+                    {% set status_class = "status-" ~ event.status %}
+                {% endif %}
+                
+                <div class="calendar-day-cell {{ status_class }} {% if cell.is_today %}today{% endif %}" 
+                     id="cell_{{ cell.date_str }}"
+                     onclick="showDateDetails('{{ cell.date_str }}')">
+                    <div class="calendar-day-num {% if cell.is_today %}text-primary{% endif %}">{{ cell.day }}</div>
+                    {% if event and event.status != 'unmarked' %}
+                    <span class="calendar-day-label text-truncate w-100" title="{{ event.title }}" id="label_{{ cell.date_str }}">
+                        {{ event.title }}
+                    </span>
+                    {% else %}
+                    <span class="calendar-day-label text-truncate w-100 text-muted" id="label_{{ cell.date_str }}">
+                        Unmarked
+                    </span>
+                    {% endif %}
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Legends Card -->
+    <div class="col-lg-3 col-xl-2">
+        <div class="glass-card mb-4">
+            <div class="heading-chip mb-3">Legend</div>
+            <h5 class="card-title mb-3"><i class="fa-solid fa-circle-info text-primary"></i>Attendance states</h5>
+            <div class="d-flex flex-column">
+                <div class="calendar-legend-item">
+                    <span class="calendar-legend-dot bg-success"></span>
+                    <span class="fw-semibold">Attended</span>
+                </div>
+                <div class="calendar-legend-item">
+                    <span class="calendar-legend-dot bg-danger"></span>
+                    <span class="fw-semibold">Missed</span>
+                </div>
+                <div class="calendar-legend-item">
+                    <span class="calendar-legend-dot bg-warning"></span>
+                    <span class="fw-semibold">Partial</span>
+                </div>
+                <div class="calendar-legend-item">
+                    <span class="calendar-legend-dot bg-info"></span>
+                    <span class="fw-semibold">Holiday</span>
+                </div>
+                <div class="calendar-legend-item">
+                    <span class="calendar-legend-dot bg-secondary"></span>
+                    <span class="fw-semibold">No Classes</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sliding Date Details Drawer -->
+<div class="sliding-drawer" id="dateDetailsDrawer">
+    <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom border-secondary-subtle">
+        <h5 class="fw-bold mb-0 text-body" id="drawerDateTitle">Class Details</h5>
+        <button type="button" class="btn-close btn-close-white" onclick="closeDrawer()"></button>
+    </div>
+    
+    <div id="drawerLoading" class="text-center py-5 d-none">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="text-secondary mt-2 small">Fetching schedule...</p>
+    </div>
+    
+    <div id="drawerAlert" class="alert alert-info d-none small"></div>
+    
+    <div id="drawerContent" class="flex-grow-1 overflow-y-auto d-none" style="padding-right: 5px;">
+        <div class="d-flex flex-column gap-3" id="drawerClassesContainer">
+            <!-- Dynamic Class Cards -->
+        </div>
+    </div>
+    
+    <div class="mt-4 pt-3 border-top border-secondary-subtle d-flex gap-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary w-100" onclick="closeDrawer()">Close</button>
+        <a href="#" id="drawerDirectLink" class="btn btn-sm btn-primary w-100">Full Edit</a>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function closeDrawer() {
+        document.getElementById('dateDetailsDrawer').classList.remove('open');
+    }
+
+    function showDateDetails(dateStr) {
+        document.getElementById('drawerDateTitle').innerText = "Schedule: " + dateStr;
+        document.getElementById('drawerLoading').classList.remove('d-none');
+        document.getElementById('drawerContent').classList.add('d-none');
+        document.getElementById('drawerAlert').classList.add('d-none');
+        document.getElementById('drawerDirectLink').href = "/daily?date=" + dateStr;
+        
+        const drawer = document.getElementById('dateDetailsDrawer');
+        drawer.classList.add('open');
+        
+        fetch('/api/date_details?date=' + dateStr)
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('drawerLoading').classList.add('d-none');
+                
+                if (data.special_day) {
+                    const alertEl = document.getElementById('drawerAlert');
+                    alertEl.innerHTML = `<strong>${data.special_day.type.toUpperCase()}:</strong> ${data.special_day.reason.replaceAll('_', ' ')}` + (data.special_day.desc ? ` (${data.special_day.desc})` : '');
+                    alertEl.classList.remove('d-none');
+                } else if (!data.classes || data.classes.length === 0) {
+                    const alertEl = document.getElementById('drawerAlert');
+                    alertEl.innerText = "No classes scheduled for this day.";
+                    alertEl.classList.remove('d-none');
+                } else {
+                    const container = document.getElementById('drawerClassesContainer');
+                    container.innerHTML = '';
+                    
+                    data.classes.forEach(cls => {
+                        let statusColor = 'var(--text-muted)';
+                        let statusBorder = 'rgba(255,255,255,0.06)';
+                        let statusText = 'Unmarked';
+                        
+                        if (cls.status === 'attended') {
+                            statusColor = 'var(--success)';
+                            statusBorder = 'rgba(16, 185, 129, 0.2)';
+                            statusText = 'Attended';
+                        } else if (cls.status === 'missed') {
+                            statusColor = 'var(--danger)';
+                            statusBorder = 'rgba(239, 68, 68, 0.2)';
+                            statusText = 'Missed';
+                        }
+                        
+                        const item = document.createElement('div');
+                        item.className = 'glass-card p-3';
+                        item.style.borderColor = statusBorder;
+                        item.innerHTML = `
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <span class="badge bg-primary-glow text-primary font-monospace small">${cls.start_time} - ${cls.end_time}</span>
+                                <span class="fw-bold small" style="color: ${statusColor}">${statusText}</span>
+                            </div>
+                            <h6 class="fw-bold text-white mb-1">${cls.subject_name}</h6>
+                            <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top border-secondary-subtle">
+                                <span class="text-secondary small">Room: ${cls.room || 'N/A'}</span>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-sm btn-outline-success py-1 px-2" onclick="quickMark('${dateStr}', ${cls.subject_id}, '${cls.start_time}', 'attended', ${cls.version_id})" title="Mark Attended"><i class="fa-solid fa-check"></i></button>
+                                    <button class="btn btn-sm btn-outline-danger py-1 px-2" onclick="quickMark('${dateStr}', ${cls.subject_id}, '${cls.start_time}', 'missed', ${cls.version_id})" title="Mark Missed"><i class="fa-solid fa-xmark"></i></button>
+                                </div>
+                            </div>
+                        `;
+                        container.appendChild(item);
+                    });
+                    document.getElementById('drawerContent').classList.remove('d-none');
+                }
+            })
+            .catch(err => {
+                document.getElementById('drawerLoading').classList.add('d-none');
+                const alertEl = document.getElementById('drawerAlert');
+                alertEl.innerText = "An error occurred loading schedule data.";
+                alertEl.classList.remove('d-none');
+            });
+    }
+
+    function quickMark(dateStr, subjectId, timeStr, status, versionId) {
+        fetch('/api/quick_mark', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                date: dateStr,
+                subject_id: subjectId,
+                time: timeStr,
+                status: status,
+                version_id: versionId
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                // Refresh drawer list
+                showDateDetails(dateStr);
+                
+                // Dynamically update the calendar day cell classes
+                const cell = document.getElementById('cell_' + dateStr);
+                const label = document.getElementById('label_' + dateStr);
+                if (cell && label) {
+                    fetch('/api/date_details?date=' + dateStr)
+                        .then(res => res.json())
+                        .then(dData => {
+                            let att = 0;
+                            let miss = 0;
+                            dData.classes.forEach(c => {
+                                if (c.status === 'attended') att++;
+                                if (c.status === 'missed') miss++;
+                            });
+                            
+                            // Remove existing status classes
+                            cell.className = cell.className.replace(/status-\w+/g, '');
+                            
+                            if (att > 0 && miss === 0) {
+                                cell.classList.add('status-attended');
+                                label.innerText = `Attended (${att}/${att})`;
+                            } else if (att === 0 && miss > 0) {
+                                cell.classList.add('status-missed');
+                                label.innerText = `Missed (${miss}/${miss})`;
+                            } else if (att > 0 && miss > 0) {
+                                cell.classList.add('status-partial');
+                                label.innerText = `Partial (${att}/${att+miss})`;
+                            } else {
+                                cell.classList.add('status-unmarked');
+                                label.innerText = 'Unmarked';
+                            }
+                        });
+                }
+            }
+        });
+    }
+</script>
+{% endblock %}
