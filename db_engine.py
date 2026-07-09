@@ -279,6 +279,12 @@ class SQLAlchemyConnectionWrapper:
         if is_postgres:
             if '?' in sql:
                 sql = sql.replace('?', '%s')
+            if 'INSERT OR IGNORE' in sql.upper():
+                sql = re.sub(r'\bINSERT\s+OR\s+IGNORE\b', 'INSERT', sql, flags=re.IGNORECASE)
+                sql = sql.strip()
+                if sql.endswith(';'):
+                    sql = sql[:-1].strip()
+                sql += ' ON CONFLICT DO NOTHING'
             if is_insert and 'RETURNING' not in sql.upper() and 'SETTINGS' not in sql.upper():
                 sql += ' RETURNING id'
 
