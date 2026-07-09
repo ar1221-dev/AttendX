@@ -30,21 +30,26 @@ def init_db(user_id=None):
         user_id = _ACTIVE_USER_ID
         
     if user_id:
-        conn = get_db()
-        cursor = conn.cursor()
-        default_settings = {
-            'theme': 'dark',
-            'default_target': '75',
-            'first_day_of_week': '1', # 1 = Monday
-            'date_format': '%Y-%m-%d',
-            'time_format': '%H:%M',
-            'auto_backup': 'true',
-            'custom_goals': '75,80,85,90'
-        }
-        for key, val in default_settings.items():
-            cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?);", (key, val))
-        conn.commit()
-        conn.close()
+        old_active_user = _ACTIVE_USER_ID
+        set_active_user(user_id)
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            default_settings = {
+                'theme': 'dark',
+                'default_target': '75',
+                'first_day_of_week': '1', # 1 = Monday
+                'date_format': '%Y-%m-%d',
+                'time_format': '%H:%M',
+                'auto_backup': 'true',
+                'custom_goals': '75,80,85,90'
+            }
+            for key, val in default_settings.items():
+                cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?);", (key, val))
+            conn.commit()
+            conn.close()
+        finally:
+            set_active_user(old_active_user)
 
 
 def ensure_user_db(user_id):
