@@ -285,6 +285,21 @@ class SQLAlchemyConnectionWrapper:
                 if sql.endswith(';'):
                     sql = sql[:-1].strip()
                 sql += ' ON CONFLICT DO NOTHING'
+            elif 'INSERT OR REPLACE' in sql.upper():
+                table_match = re.search(r'\bINTO\s+(\w+)\b', sql, re.IGNORECASE)
+                if table_match:
+                    table_name = table_match.group(1).lower()
+                    sql = re.sub(r'\bINSERT\s+OR\s+REPLACE\b', 'INSERT', sql, flags=re.IGNORECASE)
+                    sql = sql.strip()
+                    if sql.endswith(';'):
+                        sql = sql[:-1].strip()
+                    
+                    if table_name == 'settings':
+                        sql += ' ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value'
+                    elif table_name == 'holidays':
+                        sql += ' ON CONFLICT (user_id, semester_id, date) DO UPDATE SET reason = EXCLUDED.reason'
+                    elif table_name == 'no_class_days':
+                        sql += ' ON CONFLICT (user_id, semester_id, date) DO UPDATE SET reason = EXCLUDED.reason, custom_description = EXCLUDED.custom_description'
             if is_insert and 'RETURNING' not in sql.upper() and 'SETTINGS' not in sql.upper():
                 sql += ' RETURNING id'
 
