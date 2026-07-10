@@ -1669,6 +1669,10 @@ def handle_exception(e):
     tb = traceback.format_exc()
     return f"<h1>Internal Server Error</h1><pre>{tb}</pre>", 500
 
+@app.route('/test_version')
+def test_version():
+    return "version_debug_3a22277_and_1bd59be"
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', 'true').lower() == 'true'
