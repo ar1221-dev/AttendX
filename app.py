@@ -1663,6 +1663,12 @@ def change_password():
     flash("Password updated successfully.", "success")
     return redirect(url_for('profile_page'))
 
+@app.errorhandler(Exception)
+def handle_exception(e):
+    import traceback
+    tb = traceback.format_exc()
+    return f"<h1>Internal Server Error</h1><pre>{tb}</pre>", 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', 'true').lower() == 'true'
