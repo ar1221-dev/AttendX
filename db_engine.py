@@ -5,6 +5,12 @@ import urllib.parse
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 
+try:
+    from flask import has_app_context, g
+except ImportError:
+    has_app_context = lambda: False
+    g = None
+
 def clean_database_url(url):
     if not url:
         return url
@@ -297,9 +303,10 @@ class SQLiteCompatibleCursor:
         return RowWrapper(row._mapping)
 
 class SQLAlchemyConnectionWrapper:
-    def __init__(self, connection):
+    def __init__(self, connection, is_request_scoped=False):
         self.connection = connection
         self.transaction = self.connection.begin()
+        self.is_request_scoped = is_request_scoped
 
     def execute(self, sql, params=None):
         sql, params = rewrite_query(sql, params)
@@ -351,6 +358,23 @@ class SQLAlchemyConnectionWrapper:
             self.transaction = self.connection.begin()
 
     def close(self):
+        if self.is_request_scoped:
+            if self.transaction:
+                try:
+                    self.transaction.commit()
+                except Exception:
+                    pass
+                self.transaction = self.connection.begin()
+            return
+
+        if self.transaction:
+            try:
+                self.transaction.commit()
+            except Exception:
+                pass
+        self.connection.close()
+
+    def real_close(self):
         if self.transaction:
             try:
                 self.transaction.commit()
@@ -367,5 +391,11 @@ class SQLAlchemyConnectionWrapper:
         self.close()
 
 def get_connection():
-    conn = engine.connect()
-    return SQLAlchemyConnectionWrapper(conn)
+    if has_app_context() and g is not None:
+        if '_database_connection' not in g:
+            conn = engine.connect()
+            g._database_connection = SQLAlchemyConnectionWrapper(conn, is_request_scoped=True)
+        return g._database_connection
+    else:
+        conn = engine.connect()
+        return SQLAlchemyConnectionWrapper(conn, is_request_scoped=False)

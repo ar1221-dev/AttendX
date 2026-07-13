@@ -1663,6 +1663,13 @@ def change_password():
     flash("Password updated successfully.", "success")
     return redirect(url_for('profile_page'))
 
+@app.teardown_appcontext
+def teardown_db(exception):
+    from flask import g
+    db_conn = g.pop('_database_connection', None)
+    if db_conn is not None:
+        db_conn.real_close()
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     import traceback
