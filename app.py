@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, session, abort
 import database as db
+import time
 import timetable_import as ti
 import auth_db
 import os
@@ -1716,6 +1717,17 @@ def handle_exception(e):
 @app.route('/test_version')
 def test_version():
     return "version_debug_3a22277_and_1bd59be"
+
+@app.before_request
+def before():
+    request.start_time = time.perf_counter()
+
+@app.after_request
+def after(response):
+    if hasattr(request, 'start_time'):
+        duration = time.perf_counter() - request.start_time
+        print(f"{request.path} took {duration:.3f} sec")
+    return response
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
