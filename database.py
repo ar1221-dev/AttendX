@@ -259,7 +259,7 @@ def mark_attendance(semester_id, subject_id, date_str, time_str, status, version
     cursor.execute("""
         INSERT INTO attendance (semester_id, subject_id, date, time, status, version_id, notes)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(subject_id, date, time) DO UPDATE SET
+        ON CONFLICT(user_id, subject_id, date, time) DO UPDATE SET
             status = excluded.status,
             version_id = excluded.version_id,
             notes = excluded.notes;
@@ -1079,7 +1079,7 @@ def get_notifications(semester_id):
 # --- Cancelled Classes & Extra Class Days ---
 def add_cancelled_class(semester_id, subject_id, date_str, reason=''):
     conn = get_db()
-    conn.execute('INSERT INTO cancelled_classes (semester_id, subject_id, date, reason) VALUES (?, ?, ?, ?) ON CONFLICT(subject_id, date) DO NOTHING;', (semester_id, subject_id, date_str, reason))
+    conn.execute('INSERT INTO cancelled_classes (semester_id, subject_id, date, reason) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, subject_id, date) DO NOTHING;', (semester_id, subject_id, date_str, reason))
     conn.commit()
     conn.close()
 
@@ -1102,7 +1102,7 @@ def delete_cancelled_class(record_id):
 
 def add_extra_class_day(semester_id, date_str, day_to_follow, reason=''):
     conn = get_db()
-    conn.execute('INSERT INTO extra_class_days (semester_id, date, day_to_follow, reason) VALUES (?, ?, ?, ?) ON CONFLICT(semester_id, date) DO UPDATE SET day_to_follow=excluded.day_to_follow, reason=excluded.reason;', (semester_id, date_str, day_to_follow, reason))
+    conn.execute('INSERT INTO extra_class_days (semester_id, date, day_to_follow, reason) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, semester_id, date) DO UPDATE SET day_to_follow=excluded.day_to_follow, reason=excluded.reason;', (semester_id, date_str, day_to_follow, reason))
     conn.commit()
     conn.close()
 

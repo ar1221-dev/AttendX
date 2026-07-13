@@ -254,7 +254,7 @@ def update_user_profile(user_id, username, email, full_name):
         )
         conn.commit()
         return True, 'Profile updated successfully.'
-    except sqlite3.Error as e:
+    except Exception as e:
         return False, f'Database error: {str(e)}'
     finally:
         conn.close()

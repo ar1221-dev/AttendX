@@ -130,7 +130,7 @@ else:
     ensure_admin_account()
 
 try:
-    if db.get_setting('auto_backup', 'true') == 'true':
+    if db.DB_PATH and db.get_setting('auto_backup', 'true') == 'true':
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         backup_filename = f"auto_backup_{timestamp}.db"
         dest_path = os.path.join(BACKUPS_DIR, backup_filename)

@@ -87,6 +87,34 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
 def init_tables():
     from models import Base
     Base.metadata.create_all(engine)
+    
+    # Align sequences if using PostgreSQL
+    if engine.dialect.name == 'postgresql':
+        tables = [
+            'users', 'invitations', 'password_resets', 'semesters', 'subjects',
+            'timetable_versions', 'timetable_entries', 'attendance', 'holidays',
+            'no_class_days', 'backup_history', 'cancelled_classes', 'extra_class_days'
+        ]
+        with engine.connect() as conn:
+            with conn.begin():
+                for table in tables:
+                    try:
+                        # Check if table exists
+                        res = conn.execute(text(f"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '{table}');"))
+                        exists = res.scalar()
+                        if exists:
+                            # Find the sequence name for the 'id' column
+                            seq_res = conn.execute(text(f"SELECT pg_get_serial_sequence('\"{table}\"', 'id');"))
+                            seq_name = seq_res.scalar()
+                            if seq_name:
+                                # Update sequence to max(id)
+                                conn.execute(text(f"""
+                                    SELECT setval('{seq_name}', 
+                                           COALESCE((SELECT MAX(id) FROM "{table}"), 1), 
+                                           EXISTS (SELECT 1 FROM "{table}"));
+                                """))
+                    except Exception as e:
+                        print(f"Warning: Failed to align sequence for table {table}: {e}")
 
 # User Session Context for Data Isolation
 _ACTIVE_USER_ID = None
