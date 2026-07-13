@@ -121,6 +121,31 @@ def init_tables():
                                 """))
                     except Exception as e:
                         print(f"Warning: Failed to align sequence for table {table}: {e}")
+                        
+    # Create indexes for foreign keys and filter columns to avoid full table scans
+    indexes = [
+        ("idx_semesters_user_id", "semesters", "user_id"),
+        ("idx_subjects_semester_id", "subjects", "semester_id"),
+        ("idx_timetable_versions_semester_id", "timetable_versions", "semester_id"),
+        ("idx_timetable_entries_version_id", "timetable_entries", "version_id"),
+        ("idx_attendance_semester_id", "attendance", "semester_id"),
+        ("idx_attendance_subject_id", "attendance", "subject_id"),
+        ("idx_attendance_date", "attendance", "date"),
+        ("idx_holidays_semester_id", "holidays", "semester_id"),
+        ("idx_no_class_days_semester_id", "no_class_days", "semester_id"),
+        ("idx_cancelled_classes_semester_id", "cancelled_classes", "semester_id"),
+        ("idx_extra_class_days_semester_id", "extra_class_days", "semester_id"),
+    ]
+    try:
+        with engine.connect() as conn:
+            with conn.begin():
+                for idx_name, table, col in indexes:
+                    try:
+                        conn.execute(text(f'CREATE INDEX IF NOT EXISTS "{idx_name}" ON "{table}" ("{col}");'))
+                    except Exception as e:
+                        print(f"Warning: Failed to create index {idx_name} on {table}({col}): {e}")
+    except Exception as e:
+        print(f"Warning: Connection failed during index creation: {e}")
 
 # User Session Context for Data Isolation
 _ACTIVE_USER_ID = None

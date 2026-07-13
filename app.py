@@ -115,6 +115,38 @@ def require_authentication():
             abort(400)
     return None
 
+@app.after_request
+def compress_and_cache(response):
+    import gzip
+    from io import BytesIO
+    
+    # 1. Caching for static assets
+    if request.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'public, max-age=31536000'
+        
+    # 2. Gzip compression for text-based responses
+    accept_encoding = request.headers.get('Accept-Encoding', '')
+    if (response.status_code < 200 or 
+        response.status_code >= 300 or 
+        'gzip' not in accept_encoding.lower() or 
+        'Content-Encoding' in response.headers):
+        return response
+        
+    content_type = response.content_type or ''
+    if 'text/html' in content_type or 'text/css' in content_type or 'application/javascript' in content_type or 'application/json' in content_type:
+        response.direct_passthrough = False
+        data = response.get_data()
+        if len(data) >= 500: # only compress if >= 500 bytes
+            gzip_buffer = BytesIO()
+            with gzip.GzipFile(mode='wb', fileobj=gzip_buffer) as gzip_file:
+                gzip_file.write(data)
+            response.set_data(gzip_buffer.getvalue())
+            response.headers['Content-Encoding'] = 'gzip'
+            response.headers['Content-Length'] = len(response.get_data())
+            response.headers['Vary'] = 'Accept-Encoding'
+            
+    return response
+
 # Ensure local backups folder exists
 BACKUPS_DIR = os.path.join(os.path.dirname(__file__), 'backups')
 if not os.path.exists(BACKUPS_DIR):
@@ -129,15 +161,20 @@ if not auth_db.get_users():
 else:
     ensure_admin_account()
 
-try:
-    if db.DB_PATH and db.get_setting('auto_backup', 'true') == 'true':
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        backup_filename = f"auto_backup_{timestamp}.db"
-        dest_path = os.path.join(BACKUPS_DIR, backup_filename)
-        shutil.copy(db.DB_PATH, dest_path)
-        print(f"Startup auto-backup created successfully: {backup_filename}")
-except Exception as e:
-    print(f"Startup backup failed: {e}")
+import threading
+
+def run_auto_backup():
+    try:
+        if db.DB_PATH and db.get_setting('auto_backup', 'true') == 'true':
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_filename = f"auto_backup_{timestamp}.db"
+            dest_path = os.path.join(BACKUPS_DIR, backup_filename)
+            shutil.copy(db.DB_PATH, dest_path)
+            print(f"Startup auto-backup created successfully: {backup_filename}")
+    except Exception as e:
+        print(f"Startup backup failed: {e}")
+
+threading.Thread(target=run_auto_backup, daemon=True).start()
 
 # --- Context Processors ---
 @app.context_processor
