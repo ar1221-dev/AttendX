@@ -23,7 +23,7 @@ app.config.update(
     SESSION_COOKIE_SECURE=os.environ.get('FLASK_ENV') == 'production'
 )
 
-AUTH_PATHS = {'/login', '/logout', '/register', '/forgot_password', '/reset_password'}
+AUTH_PATHS = {'/login', '/logout', '/register', '/forgot_password', '/reset_password', '/test_version'}
 AUTH_POST_PATHS = {'/login', '/register', '/forgot_password', '/reset_password', '/admin/invite', '/admin/users/toggle', '/admin/users/delete', '/admin/invitations/cancel', '/admin/invitations/resend', '/admin/invitations/delete'}
 LOGIN_FAILURES = defaultdict(list)
 
