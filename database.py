@@ -470,25 +470,53 @@ def get_special_day_status(semester_id, date_str):
     conn.close()
     return None
 
-def _count_classes_on_date(semester_id, date_str):
-    """Count scheduled classes on a date (ignoring whether it's a leave day)."""
-    dt = datetime.strptime(date_str, '%Y-%m-%d').date()
-    version = resolve_timetable_version(semester_id, date_str)
-    if not version:
-        return 0
-    entries = get_timetable_entries(version['id'])
-    return len([e for e in entries if e['day_of_week'] == dt.weekday()])
-
-
 def get_leave_summary(semester_id):
     """Summarize recorded leaves/holidays and their effect on attendance."""
-    holidays = get_holidays(semester_id)
-    no_class_days = get_no_class_days(semester_id)
+    conn = get_db()
+    holidays = conn.execute("SELECT * FROM holidays WHERE semester_id = ? ORDER BY date ASC;", (semester_id,)).fetchall()
+    no_class_days = conn.execute("SELECT * FROM no_class_days WHERE semester_id = ? ORDER BY date ASC;", (semester_id,)).fetchall()
+    versions = conn.execute("SELECT * FROM timetable_versions WHERE semester_id = ? ORDER BY effective_date DESC;", (semester_id,)).fetchall()
+    
+    version_ids = [v['id'] for v in versions]
+    entries_by_version = {}
+    if version_ids:
+        placeholders = ','.join('?' for _ in version_ids)
+        entries = conn.execute(f"""
+            SELECT version_id, day_of_week
+            FROM timetable_entries
+            WHERE version_id IN ({placeholders});
+        """, tuple(version_ids)).fetchall()
+        for e in entries:
+            entries_by_version.setdefault(e['version_id'], []).append(e['day_of_week'])
+            
+    conn.close()
+    
+    # Helper to resolve version in memory
+    def resolve_version_in_memory(date_str):
+        for v in versions:
+            eff = v['effective_date']
+            end = v.get('end_date')
+            if eff <= date_str and (end is None or date_str <= end):
+                return v
+        return None
+        
+    def count_classes_in_memory(date_str):
+        try:
+            dt = datetime.strptime(date_str, '%Y-%m-%d').date()
+            weekday = dt.weekday()
+            version = resolve_version_in_memory(date_str)
+            if not version:
+                return 0
+            day_entries = entries_by_version.get(version['id'], [])
+            return sum(1 for d in day_entries if d == weekday)
+        except Exception:
+            return 0
+
     details = []
     excluded_classes = 0
 
     for h in holidays:
-        count = _count_classes_on_date(semester_id, h['date'])
+        count = count_classes_in_memory(h['date'])
         excluded_classes += count
         details.append({
             'date': h['date'],
@@ -499,7 +527,7 @@ def get_leave_summary(semester_id):
         })
 
     for n in no_class_days:
-        count = _count_classes_on_date(semester_id, n['date'])
+        count = count_classes_in_memory(n['date'])
         excluded_classes += count
         details.append({
             'date': n['date'],
@@ -567,15 +595,22 @@ def calculate_attendance_stats(semester_id):
     total_missed = 0
     today_str = date.today().strftime('%Y-%m-%d')
     
+    # Fetch all counts in a single query
+    counts = conn.execute("""
+        SELECT 
+            subject_id,
+            SUM(CASE WHEN status = 'attended' THEN 1 ELSE 0 END) as attended,
+            SUM(CASE WHEN status = 'missed' THEN 1 ELSE 0 END) as missed
+        FROM attendance
+        WHERE semester_id = ? AND date < ?
+        GROUP BY subject_id;
+    """, (semester_id, today_str)).fetchall()
+    
+    attendance_by_subject = {c['subject_id']: c for c in counts}
+    
     for sub in subjects:
         sub_id = sub['id']
-        att_row = conn.execute("""
-            SELECT 
-                SUM(CASE WHEN status = 'attended' THEN 1 ELSE 0 END) as attended,
-                SUM(CASE WHEN status = 'missed' THEN 1 ELSE 0 END) as missed
-            FROM attendance
-            WHERE subject_id = ? AND date < ?;
-        """, (sub_id, today_str)).fetchone()
+        att_row = attendance_by_subject.get(sub_id, {'attended': 0, 'missed': 0})
         
         attended = att_row['attended'] or 0
         missed = att_row['missed'] or 0
@@ -620,8 +655,9 @@ def get_custom_goals():
     except ValueError:
         return [75, 80, 85, 90]
 
-def calculate_goals_and_leaves(semester_id, target_percentage=75.0):
-    stats = calculate_attendance_stats(semester_id)
+def calculate_goals_and_leaves(semester_id, target_percentage=75.0, stats=None):
+    if stats is None:
+        stats = calculate_attendance_stats(semester_id)
     overall = stats['overall']
     custom_targets = get_custom_goals()
     
@@ -968,6 +1004,53 @@ def get_upcoming_classes(semester_id, days=7):
     curr = today
     end_scan = min(today + timedelta(days=days), sem_end)
     
+    conn = get_db()
+    holidays = {h['date']: h['reason'] for h in conn.execute(
+        "SELECT date, reason FROM holidays WHERE semester_id = ?;", (semester_id,)
+    ).fetchall()}
+    no_classes = {n['date']: {'reason': n['reason'], 'desc': n['custom_description']} for n in conn.execute(
+        "SELECT date, reason, custom_description FROM no_class_days WHERE semester_id = ?;", (semester_id,)
+    ).fetchall()}
+    versions = conn.execute(
+        "SELECT * FROM timetable_versions WHERE semester_id = ? ORDER BY effective_date DESC;", (semester_id,)
+    ).fetchall()
+    
+    version_ids = [v['id'] for v in versions]
+    entries_by_version = {}
+    if version_ids:
+        placeholders = ','.join('?' for _ in version_ids)
+        entries = conn.execute(f"""
+            SELECT e.*, s.name as subject_name, s.code as subject_code, s.faculty as subject_faculty
+            FROM timetable_entries e
+            JOIN subjects s ON e.subject_id = s.id
+            WHERE e.version_id IN ({placeholders});
+        """, tuple(version_ids)).fetchall()
+        for e in entries:
+            entries_by_version.setdefault(e['version_id'], []).append(dict(e))
+            
+    start_scan_str = today.strftime('%Y-%m-%d')
+    end_scan_str = end_scan.strftime('%Y-%m-%d')
+    attendance_records = conn.execute("""
+        SELECT a.*, s.name as subject_name
+        FROM attendance a
+        JOIN subjects s ON a.subject_id = s.id
+        WHERE a.semester_id = ? AND a.date BETWEEN ? AND ?;
+    """, (semester_id, start_scan_str, end_scan_str)).fetchall()
+    
+    attendance_by_date = {}
+    for r in attendance_records:
+        attendance_by_date.setdefault(r['date'], {})[f"{r['subject_id']}_{r['time']}"] = r
+
+    conn.close()
+
+    def resolve_version_in_memory(date_str):
+        for v in versions:
+            eff = v['effective_date']
+            end = v.get('end_date')
+            if eff <= date_str and (end is None or date_str <= end):
+                return v
+        return None
+
     while curr <= end_scan:
         curr_str = curr.strftime('%Y-%m-%d')
         weekday = curr.weekday()
@@ -976,16 +1059,22 @@ def get_upcoming_classes(semester_id, days=7):
             curr += timedelta(days=1)
             continue
         
-        special = get_special_day_status(semester_id, curr_str)
+        special = None
+        if curr_str in holidays:
+            special = {'type': 'holiday', 'reason': holidays[curr_str]}
+        elif curr_str in no_classes:
+            nc = no_classes[curr_str]
+            special = {'type': 'no_class', 'reason': nc['reason'], 'desc': nc['desc']}
+            
         if special:
             curr += timedelta(days=1)
             continue
         
-        active_version = resolve_timetable_version(semester_id, curr_str)
+        active_version = resolve_version_in_memory(curr_str)
         if active_version:
-            entries = get_timetable_entries(active_version['id'])
+            entries = entries_by_version.get(active_version['id'], [])
             day_entries = [e for e in entries if e['day_of_week'] == weekday]
-            marked = get_attendance_for_date(semester_id, curr_str) if curr <= today else {}
+            marked = attendance_by_date.get(curr_str, {}) if curr <= today else {}
             
             for entry in day_entries:
                 key = f"{entry['subject_id']}_{entry['start_time']}"
@@ -1043,7 +1132,7 @@ def get_notifications(semester_id):
     
     # Missed class warnings per subject
     stats = calculate_attendance_stats(semester_id)
-    goals = calculate_goals_and_leaves(semester_id, semester['target'])
+    goals = calculate_goals_and_leaves(semester_id, semester['target'], stats=stats)
     
     for sub in stats['subjects']:
         if sub['missed'] >= 3:

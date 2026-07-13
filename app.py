@@ -433,7 +433,7 @@ def dashboard():
     stats = db.calculate_attendance_stats(sem_id)
     
     # Calculate goals and safe leaves
-    goals_leaves = db.calculate_goals_and_leaves(sem_id, semester['target'])
+    goals_leaves = db.calculate_goals_and_leaves(sem_id, semester['target'], stats=stats)
     
     # Today's scheduled classes
     today_str = date.today().strftime('%Y-%m-%d')
