@@ -189,15 +189,15 @@ def rewrite_query(sql, params):
 
     # Handle INSERT queries
     if sql_upper.startswith('INSERT'):
-        match = re.match(r'^(INSERT(?:\s+OR\s+\w+)?\s+INTO\s+(\w+)\s*\()([^)]+)(\)\s*VALUES\s*\()([^)]+)(\))', sql, re.IGNORECASE)
+        match = re.match(r'^(INSERT(?:\s+OR\s+\w+)?\s+INTO\s+(\w+)\s*\()([^)]+)(\)\s*VALUES\s*\()([^)]+)(\))(.*)$', sql, re.IGNORECASE | re.DOTALL)
         if match:
-            prefix, table, cols, middle, vals, suffix = match.groups()
+            prefix, table, cols, middle, vals, suffix, rest = match.groups()
             # Only skip if user_id is already in the columns list
             if 'user_id' in [c.strip().lower() for c in cols.split(',')]:
                 return sql, params
             new_cols = 'user_id, ' + cols
             new_vals = '?, ' + vals
-            new_sql = f"{prefix}{new_cols}{middle}{new_vals}{suffix}"
+            new_sql = f"{prefix}{new_cols}{middle}{new_vals}{suffix}{rest}"
             new_params = (_ACTIVE_USER_ID,) + tuple(params or ())
             return new_sql, new_params
         return sql, params
